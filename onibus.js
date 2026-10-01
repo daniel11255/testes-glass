@@ -150,7 +150,7 @@
           const isPast=bus.m<=nowMins,isNext=nextBus&&bus===nextBus;
           const cls=`time-pill reveal-pill ${isPast?'past':''} ${isNext?'next-'+dir:''}`;
           const tagHtml=bus.tag?`<span class="pill-tag ${(tagClassMap&&tagClassMap[bus.tag])||''}">${bus.tag}</span>`:'';
-          const delay=Math.min(idx,10)*20;
+          const delay=idx*20;
           html+=`<div class="${cls}" style="animation-delay:${delay}ms">${bus.t}${tagHtml}</div>`;
         });
         html+=`</div></div>`;

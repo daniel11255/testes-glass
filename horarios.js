@@ -219,7 +219,7 @@ function copyEmail(email, btn) {
         emptyOverlay.classList.remove('active');
 
         tbody.innerHTML = filtered.map((p, i) => `
-          <tr class="reveal" style="animation-delay:${Math.min(i, 12) * 20}ms">
+          <tr class="reveal" style="animation-delay:${i * 20}ms">
             <td data-label="Professor"><strong>${highlight(p.professor, filtro)}</strong></td>
             <td data-label="Matéria">${highlight(p.materia, filtro)}</td>
             <td data-label="Horário">${p.horario}</td>

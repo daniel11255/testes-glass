@@ -30,7 +30,11 @@ function showToast(message, duration = 2400) {
   el.setAttribute('role', 'status');
   el.textContent = message;
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), duration);
+  // sai com o mesmo cuidado com que entra, em vez de sumir de uma vez
+  setTimeout(() => {
+    el.classList.add('lg-toast-out');
+    setTimeout(() => el.remove(), 280);
+  }, duration);
 }
 
 // ── Tema ─────────────────────────────────────────────────────

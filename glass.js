@@ -33,68 +33,42 @@
   };
 
   /* ── 1. Fundo ambiente ─────────────────────────────────────────── */
-  let par = null, cursor = null;
+  // Duas camadas de paralaxe empilhadas: a de baixo acompanha a rolagem
+  // (sem transição, para não "atrasar"), a de cima segue o ponteiro (com
+  // transição suave). Separadas, a rolagem nunca trava o ponteiro.
+  let par = null, scrollpar = null, cursor = null;
   function buildAmbient() {
     if (D.querySelector('.lg-ambient')) return;
     const a = D.createElement('div');
     a.className = 'lg-ambient';
     a.setAttribute('aria-hidden', 'true');
     a.innerHTML =
-      '<div class="lg-par">' +
+      '<div class="lg-scrollpar"><div class="lg-par">' +
       '<i class="lg-blob b1"></i><i class="lg-blob b2"></i><i class="lg-blob b3"></i>' +
-      '<i class="lg-blob b4"></i><i class="lg-blob b5"></i></div>' +
+      '<i class="lg-blob b4"></i><i class="lg-blob b5"></i></div></div>' +
       (fine && !reduced ? '<div class="lg-cursor"></div>' : '');
     D.body.prepend(a);
     par = a.querySelector('.lg-par');
+    scrollpar = a.querySelector('.lg-scrollpar');
     cursor = a.querySelector('.lg-cursor');
   }
 
-  /* ── 2. Ponteiro: luz, paralaxe, inclinação ──────────────────────
-     Cursor e paralaxe são conduzidos por UM laço de rAF com suavização
-     corrigida pelo tempo entre quadros (fica igual a 60, 90 ou 120 Hz).
-     Antes, a paralaxe era um `transition` no CSS cujo alvo mudava a cada
-     pointermove: a interpolação reiniciava sem parar e a animação engasgava. */
+  /* ── 2. Ponteiro: luz, paralaxe, inclinação ────────────────────── */
   let evt = null, raf = 0;
-  let cx = innerWidth / 2, cy = innerHeight / 3;   // cursor suavizado
-  let tx = cx, ty = cy;                            // alvo do cursor
-  let parX = 0, parY = 0;                          // paralaxe suavizada (-1..1)
-  let parTX = 0, parTY = 0;                        // alvo da paralaxe
-  let lastT = 0, looping = false;
+  let cx = innerWidth / 2, cy = innerHeight / 3, tx = cx, ty = cy, looping = false;
   let tiltEl = null;
 
+  function chase() {
+    cx += (tx - cx) * 0.13;
+    cy += (ty - cy) * 0.13;
+    if (cursor) cursor.style.transform = 'translate3d(' + cx.toFixed(1) + 'px,' + cy.toFixed(1) + 'px,0)';
+    if (Math.abs(tx - cx) > 0.4 || Math.abs(ty - cy) > 0.4) requestAnimationFrame(chase);
+    else looping = false;
+  }
+
   function resetTilt(el) {
-    if (!el) return;
     el.style.removeProperty('--rx');
     el.style.removeProperty('--ry');
-    el.classList.remove('lg-tilting');
-  }
-
-  function step(now) {
-    const dt = lastT ? Math.min(50, now - lastT) : 16.7;
-    lastT = now;
-    // 1 - (1-k)^(dt/16.7): mesma sensação de suavidade em qualquer taxa de atualização
-    const kC = 1 - Math.pow(1 - 0.14, dt / 16.7);
-    const kP = 1 - Math.pow(1 - 0.09, dt / 16.7);
-
-    cx += (tx - cx) * kC;
-    cy += (ty - cy) * kC;
-    parX += (parTX - parX) * kP;
-    parY += (parTY - parY) * kP;
-
-    if (cursor) cursor.style.transform = 'translate3d(' + cx.toFixed(1) + 'px,' + cy.toFixed(1) + 'px,0)';
-    if (par) par.style.transform = 'translate3d(' + (parX * -26).toFixed(2) + 'px,' + (parY * -26).toFixed(2) + 'px,0)';
-
-    const settled =
-      Math.abs(tx - cx) < 0.3 && Math.abs(ty - cy) < 0.3 &&
-      Math.abs(parTX - parX) < 0.002 && Math.abs(parTY - parY) < 0.002;
-    if (settled) { looping = false; lastT = 0; }
-    else requestAnimationFrame(step);
-  }
-
-  function kick() {
-    if (looping) return;
-    looping = true; lastT = 0;
-    requestAnimationFrame(step);
   }
 
   function flush() {
@@ -102,40 +76,44 @@
     const e = evt;
     if (!e) return;
 
-    if (fine && !reduced) {
-      tx = e.clientX; ty = e.clientY;
-      if (cursor) cursor.classList.add('on');
-      parTX = (e.clientX / innerWidth) * 2 - 1;
-      parTY = (e.clientY / innerHeight) * 2 - 1;
-      kick();
-    }
+    const wax = fine && !reduced;
+    const x = e.clientX, y = e.clientY;
 
-    // reflexo especular nos elementos de vidro sob o ponteiro
+    // 1) TODAS as leituras de layout primeiro (getBoundingClientRect)…
+    const lights = [];
     let el = e.target, depth = 0;
     while (el && el !== D.body && depth < 12) {
-      if (el.matches && el.matches(LIGHT_SEL)) {
-        const r = el.getBoundingClientRect();
-        const mx = (e.clientX - r.left).toFixed(0) + 'px';
-        const my = (e.clientY - r.top).toFixed(0) + 'px';
-        // só escreve quando muda de fato: escrever o mesmo valor ainda invalida o gradiente
-        if (el.style.getPropertyValue('--mx') !== mx) el.style.setProperty('--mx', mx);
-        if (el.style.getPropertyValue('--my') !== my) el.style.setProperty('--my', my);
-      }
+      if (el.matches && el.matches(LIGHT_SEL)) lights.push(el, el.getBoundingClientRect());
       el = el.parentElement; depth++;
     }
+    let tiltT = null, tiltR = null;
+    if (wax && e.pointerType !== 'touch' && e.target.closest) {
+      tiltT = e.target.closest(TILT_SEL);
+      if (tiltT) tiltR = tiltT.getBoundingClientRect();
+    }
 
-    // inclinação 3D
-    if (fine && !reduced && e.pointerType !== 'touch') {
-      const t = e.target.closest ? e.target.closest(TILT_SEL) : null;
-      if (tiltEl && tiltEl !== t) { resetTilt(tiltEl); tiltEl = null; }
-      if (t) {
-        if (tiltEl !== t) { t.classList.add('lg-tilting'); tiltEl = t; }
-        const r = t.getBoundingClientRect();
-        const px = (e.clientX - r.left) / r.width;
-        const py = (e.clientY - r.top) / r.height;
-        const k = t.classList.contains('clock-block') ? 0.6 : 1;
-        t.style.setProperty('--rx', ((0.5 - py) * 8 * k).toFixed(2) + 'deg');
-        t.style.setProperty('--ry', ((px - 0.5) * 10 * k).toFixed(2) + 'deg');
+    // 2) …depois as escritas de estilo (evita reflow entrelaçado a cada quadro)
+    for (let i = 0; i < lights.length; i += 2) {
+      lights[i].style.setProperty('--mx', (x - lights[i + 1].left).toFixed(0) + 'px');
+      lights[i].style.setProperty('--my', (y - lights[i + 1].top).toFixed(0) + 'px');
+    }
+
+    if (wax) {
+      tx = x; ty = y;
+      if (cursor) cursor.classList.add('on');
+      if (!looping) { looping = true; requestAnimationFrame(chase); }
+      if (par) {
+        par.style.setProperty('--px', ((x / innerWidth) * 2 - 1).toFixed(3));
+        par.style.setProperty('--py', ((y / innerHeight) * 2 - 1).toFixed(3));
+      }
+      if (tiltEl && tiltEl !== tiltT) { resetTilt(tiltEl); tiltEl = null; }
+      if (tiltT) {
+        const px = (x - tiltR.left) / tiltR.width;
+        const py = (y - tiltR.top) / tiltR.height;
+        const k = tiltT.classList.contains('clock-block') ? 0.6 : 1;
+        tiltT.style.setProperty('--rx', ((0.5 - py) * 8 * k).toFixed(2) + 'deg');
+        tiltT.style.setProperty('--ry', ((px - 0.5) * 10 * k).toFixed(2) + 'deg');
+        tiltEl = tiltT;
       }
     }
   }
@@ -179,6 +157,11 @@
       if (!animate) { void lensEl.offsetWidth; lensEl.style.transition = ''; }
       else if (item !== current && !reduced) {
         lensEl.classList.remove('lg-squish'); void lensEl.offsetWidth; lensEl.classList.add('lg-squish');
+        // o ícone da aba que passou a ser a atual dá um pulinho
+        item.classList.remove('lg-bounce'); void item.offsetWidth; item.classList.add('lg-bounce');
+        item.addEventListener('animationend', function (ev) {
+          if (ev.animationName === 'lgIconBounce') item.classList.remove('lg-bounce');
+        }, { once: true });
       }
       current = item;
     }
@@ -223,9 +206,14 @@
   /* ── 5. Rolagem: topo, dock compacto e pausa do fundo ─────────── */
   function buildScroll() {
     const topnav = D.querySelector('.topnav');
-    let lastY = scrollY, ticking = false, idle = 0, paused = false;
+    let lastY = scrollY, ticking = false, idle = 0;
     function step() {
       const y = scrollY;
+      // paralaxe do fundo: acompanha a rolagem quadro a quadro (transform puro)
+      if (scrollpar) {
+        const sc = Math.max(-52, Math.min(52, y * 0.025));
+        scrollpar.style.setProperty('--sc', sc.toFixed(2));
+      }
       if (topnav) topnav.classList.toggle('lg-scrolled', y > 8);
       if (dockEl) {
         if (y > lastY + 6 && y > 120) dockEl.classList.add('lg-compact');
@@ -234,12 +222,10 @@
       lastY = y; ticking = false;
     }
     addEventListener('scroll', function () {
-      // o fundo animado para enquanto rola: o blur dos cartões não precisa
-      // ser refeito a cada quadro de rolagem. A pausa só é escrita uma vez
-      // por rajada de scroll (antes custava 2 timers por evento).
-      if (!paused) { paused = true; root.classList.add('lg-scroll'); }
+      // o fundo animado para enquanto rola: o blur dos cartões não precisa refazer a cada quadro
+      root.classList.add('lg-scroll');
       clearTimeout(idle);
-      idle = setTimeout(function () { paused = false; root.classList.remove('lg-scroll'); }, 220);
+      idle = setTimeout(function () { root.classList.remove('lg-scroll'); }, 160);
       if (!ticking) { ticking = true; requestAnimationFrame(step); }
     }, { passive: true });
     step();
@@ -256,14 +242,7 @@
         const el = en.target;
         io.unobserve(el);
         el.classList.add('lg-in');
-        // solta o estado de revelação só quando o movimento acabou, para o
-        // elemento não voltar a ser promovido a camada durante a transição
-        el.addEventListener('transitionend', function onEnd(ev) {
-          if (ev.propertyName !== 'transform') return;
-          el.removeEventListener('transitionend', onEnd);
-          el.classList.remove('lg-pre', 'lg-in');
-        });
-        setTimeout(function () { el.classList.remove('lg-pre', 'lg-in'); }, 1100);
+        setTimeout(function () { el.classList.remove('lg-pre', 'lg-in'); }, 1200);
       });
     }, { threshold: 0.08, rootMargin: '0px 0px -6% 0px' });
     blocks.forEach(function (el) {
@@ -293,19 +272,34 @@
       }).observe(hm, { childList: true, characterData: true, subtree: true });
     }
 
-    // calendário: o mês desliza ao trocar
+    // calendário: o mês entra em onda ao trocar (as células animam por conta
+    // própria, então a limpeza é por tempo — animationend borbulha das células)
     [['prev-month', -1], ['next-month', 1]].forEach(function (p) {
       const b = D.getElementById(p[0]);
       if (!b) return;
       b.addEventListener('click', function () {
-        ['month-grid', 'month-title'].forEach(function (id) {
-          const g = D.getElementById(id);
-          if (!g) return;
-          g.style.setProperty('--dir', String(p[1]));
-          g.classList.remove('lg-flip'); void g.offsetWidth; g.classList.add('lg-flip');
-          g.addEventListener('animationend', function () { g.classList.remove('lg-flip'); }, { once: true });
-        });
+        [D.getElementById('month-grid'), D.getElementById('month-title'), D.querySelector('.weekdays')]
+          .forEach(function (g) {
+            if (!g) return;
+            g.style.setProperty('--dir', String(p[1]));
+            g.classList.remove('lg-flip'); void g.offsetWidth; g.classList.add('lg-flip');
+            clearTimeout(g.lgFlipT);
+            g.lgFlipT = setTimeout(function () { g.classList.remove('lg-flip'); }, 950);
+          });
       });
+    });
+  }
+
+  /* ── 7b. Números: "pulinho" quando o valor é atualizado ─────────── */
+  function buildNumbers() {
+    if (reduced || !('MutationObserver' in window)) return;
+    D.querySelectorAll('.smart-time, .countdown, .schedule-count').forEach(function (el) {
+      let last = el.textContent;
+      new MutationObserver(function () {
+        if (el.textContent === last) return;
+        last = el.textContent;
+        el.classList.remove('lg-bump'); void el.offsetWidth; el.classList.add('lg-bump');
+      }).observe(el, { childList: true, characterData: true, subtree: true });
     });
   }
 
@@ -351,13 +345,10 @@
   buildScroll();
   buildReveal();
   buildDetails();
+  buildNumbers();
   buildLeave();
   addEventListener('pointermove', onPointer, { passive: true });
   addEventListener('pointerdown', onDown, { passive: true });
-  D.addEventListener('pointerleave', function () {
-    if (cursor) cursor.classList.remove('on');
-    if (tiltEl) { resetTilt(tiltEl); tiltEl = null; }
-  });
-  addEventListener('blur', function () { if (tiltEl) { resetTilt(tiltEl); tiltEl = null; } });
+  D.addEventListener('pointerleave', function () { if (cursor) cursor.classList.remove('on'); });
   root.classList.add('lg-ready');
 })();

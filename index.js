@@ -73,7 +73,7 @@ const SCHEDULE = Object.fromEntries(Object.entries(GRADE).map(([d, aulas]) => [d
           rowClass = 'live'; pillClass = 'pill-live';
           const pct = ((mins - startM) / (endM - startM)) * 100;
           pillText = `<span class="live-dot"></span>Em aula agora<span class="class-progress-label" id="live-progress-label">${pct.toFixed(0)}%</span>`;
-          progressHtml = `<div class="class-progress-bar" id="live-progress-bar" style="transform:scaleX(${(pct / 100).toFixed(4)})"></div>`;
+          progressHtml = `<div class="class-progress-bar" id="live-progress-bar" style="width:${pct.toFixed(1)}%"></div>`;
           dataAttrs = ` data-start="${startM}" data-end="${endM}"`;
         } else if (!isFutureDay && mins >= endM) {
           rowClass = 'done'; pillClass = 'pill-done'; pillText = 'Concluída';
@@ -103,8 +103,7 @@ const SCHEDULE = Object.fromEntries(Object.entries(GRADE).map(([d, aulas]) => [d
       if (mins >= endM) { renderSchedule(); return; } // aula acabou, força re-render completo
 
       const pct = Math.min(100, Math.max(0, ((mins - startM) / (endM - startM)) * 100));
-      // transform (compõe na GPU) em vez de width (repinta/relayout)
-      bar.style.transform = 'scaleX(' + (pct / 100).toFixed(4) + ')';
+      bar.style.width = pct.toFixed(1) + '%';
       label.textContent = Math.round(pct) + '%';
     }
 

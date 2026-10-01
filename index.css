@@ -53,9 +53,7 @@
     .live-dot   { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 5px; vertical-align: middle; animation: pulse 1.8s ease-in-out infinite; }
 
     /* BUS QUICK CARD */
-    /* a entrada é definida uma única vez em style.css (evita duas animações
-       concorrentes no mesmo elemento, que era o que deixava o carregamento
-       com "saltos") */
+    /* (a entrada dos cartões é coreografada por style.css — uma fonte só) */
     .bus-quick-link { font-family: var(--mono); font-size: 11px; color: var(--muted); text-decoration: none; display: flex; align-items: center; gap: 4px; }
     .bus-quick-link:hover { color: var(--accent); }
     .bus-quick-link svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2.5; }
@@ -89,8 +87,7 @@
     .card-profs    .card-cta { color: var(--amber); }
     .card-calendar .card-cta { color: #2563EB; }
 
-    /* ANIMATIONS */
-    @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(198,140,26,.4); } 70% { box-shadow: 0 0 0 8px rgba(198,140,26,0); } 100% { box-shadow: 0 0 0 0 rgba(198,140,26,0); } }
+    /* ANIMATIONS — a coreografia de entrada fica em style.css */
 
     @media (max-width: 860px) { .cards-grid { grid-template-columns: repeat(2,1fr); } }
     @media (max-width: 680px) {
